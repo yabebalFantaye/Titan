@@ -38,12 +38,6 @@ class BaseStrategy:
         self.interval = interval
         self.is_simulated = is_simulated
         self.name = None
-        self.order_quantity = None
-        self.position_limit = None
-        self.buy_signal = None
-        self.profit_target_percent = None
-        self.fixed_stoploss_percent = None
-        self.trailing_stoploss_percent = None
         if self.is_simulated:
             self.market = market_simulator.MarketSimulator(exchange, base_currency, quote_currency, simulated_quote_balance, self)
         else:
@@ -114,22 +108,33 @@ class BaseStrategy:
         return count
 
     def __update_positions(self):
-        """Loop through all strategies"""
+        """Loop through all positions opened by the strategy"""
         for p in self.positions:
             if p.is_open:
                 p.update()
 
-    def long(self):
+    def long(self, order_quantity, fixed_stoploss_percent, trailing_stoploss_percent, profit_target_percent):
         """Open long position"""
-        self.print_message("Going long on " + self.market.analysis_pair)
-        self.positions.append(position.open_long_position(self.market, self.order_quantity,
+        if self.is_simulated:
+            """Open simulated long position"""
+            self.print_message("Going long on " + self.market.analysis_pair)
+            self.positions.append(market_simulator.open_long_position_simulation(self.market, order_quantity,
+                                                                                 self.market.latest_candle[
+                                                                                     self.interval][3],
+                                                                                 fixed_stoploss_percent,
+                                                                                 trailing_stoploss_percent,
+                                                                                 profit_target_percent))
+        else:
+            """LIVE long position"""
+            self.print_message("Going long on " + self.market.analysis_pair)
+            self.positions.append(position.open_long_position(self.market, order_quantity,
                                                           self.market.get_best_ask(),
-                                                          self.fixed_stoploss_percent,
-                                                          self.trailing_stoploss_percent,
-                                                          self.profit_target_percent))
+                                                          fixed_stoploss_percent,
+                                                          trailing_stoploss_percent,
+                                                          profit_target_percent))
 
     def __run(self):
-        """Start listener queue waiting for ticks"""
+        """Start the strategy thread waiting for commands"""
         self.print_message("Starting strategy " + str(self.strategy_id))
         self.running = True
         while self.running:
@@ -138,21 +143,14 @@ class BaseStrategy:
                 try:
                     job()
                 except Exception as e:
+                    print(e)
                     logger.error(job.__name__ + " threw error:\n" + str(e))
 
+
     def print_message(self, msg):
+        """Add to a queue of messages that can be consumed by the UI"""
         print(str("Strategy " + str(self.strategy_id) + ": " + msg))
         logger.info(msg)
         self.ui_messages.put(msg)
 
 
-class StrategySimulator(BaseStrategy):
-
-    def long(self):
-        """Open simulated long position"""
-        self.print_message("Going long on " + self.market.analysis_pair)
-        self.positions.append(market_simulator.open_long_position_simulation(self.market, self.order_quantity,
-                                                                       self.market.latest_candle[self.interval][3],
-                                                                       self.fixed_stoploss_percent,
-                                                                       self.trailing_stoploss_percent,
-                                                                       self.profit_target_percent))
